@@ -253,7 +253,7 @@ class Data_Loader(object):
     def __train_test_split_events_no_MANRS(self):
         pass
     def __load_all_dataset(self,include_MANRS_data=True):
-        datasets_path = '/home/dyt/BGP/datasets4/'
+        datasets_path = '/home/dyt/BGP/datasets/'
 
         # load files path
         datasets_files = self.loadDataSet_path(datasets_path)
@@ -300,11 +300,9 @@ class Data_Loader(object):
         return x, y0, hijack_event_len
     def __load_pd_dataset(self,include_MANRS_data=True,baseline=False):
         count = 0
-        datasets_path = '/home/dyt/BGP/datasets4/'
-        datasets_path5='/home/dyt/BGP/datasets5/'
+        datasets_path = '/home/dyt/BGP/datasets/'
         # load files path
         datasets_files = self.loadDataSet_path(datasets_path)
-        datasets_files5 = self.loadDataSet_path(datasets_path5)
         # spilt files to test and train
 
         data_all = pd.DataFrame()
@@ -323,17 +321,6 @@ class Data_Loader(object):
                 count+=1
             except:
                 print(datasets_path + data_file)
-        #add datasets
-        for data_file in datasets_files5:
-            try:
-                temp = pd.read_csv(datasets_path5 + data_file, index_col=0)
-                if (temp.iloc[120]['label_0'] != self.Event_num):
-                    continue
-                temp.iloc[120:120 + half_window]['label_0'] = 1
-                data_all = data_all.append(temp.iloc[120 - half_window + 1:120 + half_window])
-                count += 1
-            except:
-                print(datasets_path5 + data_file)
         hijack_event_len = data_all.shape[0]
         if include_MANRS_data:
             datasets_path2 = '/home/dyt/BGP/legitimate/'
