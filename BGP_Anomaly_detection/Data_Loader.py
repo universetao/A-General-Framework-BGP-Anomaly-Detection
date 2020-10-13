@@ -401,7 +401,7 @@ class Data_Loader(object):
             data_all = pd.read_csv('/home/dyt/BGP/result_doc/data_all.csv', index_col=0)
             self.data_cols = data_all.columns
         else:
-            datasets_path = '/home/dyt/BGP/datasets4/'
+            datasets_path = '/home/dyt/BGP/datasets/'
             datasets_path2 = '/home/dyt/BGP/legitimate/'
             # load files path
             datasets_files = self.loadDataSet_path(datasets_path)
@@ -726,7 +726,7 @@ class Data_Loader(object):
         fig.savefig('../result_doc/tsnd_'+self.Event_name+'.png', dpi=600)
         plt.show()
     def measure_datasets(self):
-        datasets_path = '/home/dyt/BGP/datasets4/'
+        datasets_path = '/home/dyt/BGP/datasets/'
 
         # load files path
         datasets_files = self.loadDataSet_path(datasets_path)
@@ -750,21 +750,6 @@ class Data_Loader(object):
 
                 print(datasets_path + data_file)
 
-        datasets_path3 = '/home/dyt/BGP/datasets5/'
-        # load files path
-        datasets_files3 = self.loadDataSet_path(datasets_path3)
-        # train_data
-        for data_file in datasets_files3:
-            try:
-                temp = pd.read_csv(datasets_path3 + data_file, index_col=0)
-                temp = temp.drop(
-                    columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
-                    axis=1)
-                feature_sum = temp.iloc[120 - half_window + 1:120 + half_window].sum()
-                feature_sum['label_0'] = temp['label_0'].iloc[120]
-                data_all = data_all.append(feature_sum, ignore_index=True)
-            except:
-                print(datasets_path3 + data_file)
 
         datasets_path2 = '/home/dyt/BGP/legitimate/'
         datasets_files2 = self.loadDataSet_path(datasets_path2)
