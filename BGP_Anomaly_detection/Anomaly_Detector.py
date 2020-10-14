@@ -25,7 +25,7 @@ class Detector(object):
     WINDOW_SIZE = 30
     INPUT_SIZE = 83
     TIME_STEP=1
-    def __init__(self,EPOCH = 100,
+    def __init__(self,EPOCH = 30,
                 LSTM_NUM = 1,
                 BATCH_SIZE = 8,
                 Hidden_SIZE = 128,
