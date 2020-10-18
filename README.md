@@ -9,7 +9,11 @@ conda env create -f environments.yaml
 ## Usage:
 In BGP_Anomaly_detection packet:
 Anomaly_Detector is main program, where you can change your hyper-parameters and excute the detection.
-Feature_Extractor is feature extraction module, which can extract features from BGP historical UPDATE packets by pybgpstream. Also you can change the codes to extract real-time BGP UPDATE packets.
+
+Feature_Extractor is feature extraction module, which can extract features from BGP historical UPDATE packets by pybgpstream. 
+Also you can change the codes to extract real-time BGP UPDATE packets.
+
 Data_loader is our preprocessing modlue, which can further transform our dates to timestamp dates and add some metrics features.
 Self_Attention_LSTM.py is our detection model.
 
+The events_data packet contains our event lists.
