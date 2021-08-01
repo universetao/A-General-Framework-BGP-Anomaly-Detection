@@ -74,7 +74,7 @@ class Feature_Extractor(object):
             try:
                 item = bin(int(item))  # ---0b11000000 0b10101000 0b1100000 0b1011110 ----
 
-                # 去掉每段二进制前的0b.
+                # cut the first 2 bin :0b.
                 item = item[2:]
             except:
                 print(IP)
@@ -91,7 +91,7 @@ class Feature_Extractor(object):
         begin_minute = 120
         until_minute = 60
         label_range = [1, 2, 3, 0]  # 0 means all
-        Window_size = 1  # min
+        Window_size = 2  # min
         total_num = events.shape[0]  # event_total_num in this list
         duration = 0
         all_features = pd.DataFrame()
@@ -315,7 +315,7 @@ class Feature_Extractor(object):
             for time in diff_AS_Path:
                 print('edit_distance', diff_AS_Path[time])
             all_features = all_features.append((features))
-            features.to_csv('../datasets_30s/features' + VICTIM_AS + '_' + str(begin_time) + '.csv')
+            features.to_csv('../datasets/features' + VICTIM_AS + '_' + str(begin_time) + '.csv')
         # all_features.to_csv('../all_datasets/add_bgpstream.csv')
 
     def delete_file_with_MPL_0(self,path):
