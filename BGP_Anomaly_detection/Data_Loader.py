@@ -214,46 +214,26 @@ class Data_Loader(object):
         return timestep_X, test_timestep_X, hijack_timestep_y, test_hijack_timestep_y, eval_timestep_X, eval_hijack_timestep_y
  
     def __load_pd_dataset(self,include_MANRS_data=True,baseline=False):
-        count = 0
+        datasets_path = '../datasets/datasets/'
+        # load files path
+        datasets_files = self.loadDataSet_path(datasets_path)
+        # spilt files to test and train
+
+        data_all = pd.DataFrame()
+
         half_window = (int)((self.Hijack_Window + 1) / 2)
         self.Anomaly_Timestep = half_window
+        print(half_window)
+        # train_data
+        count=0
+        for data_file in datasets_files:
 
-        import os
-        if os.path.exists('../datasets/data_all_'+str(self.Event_num)+'.csv'):
-            data_all=pd.read_csv('../datasets/data_all.csv')
-        else:
-            datasets_path = '../datasets/datasets1'
-            datasets_path5='../datasets/datasets2'
-            # load files path
-            datasets_files = self.loadDataSet_path(datasets_path)
-            datasets_files5 = self.loadDataSet_path(datasets_path5)
-            # spilt files to test and train
-
-            data_all = pd.DataFrame()
-
-            # train_data
-            for data_file in datasets_files:
-                try:
-                    temp = pd.read_csv(datasets_path + data_file, index_col=0)
-                    if (temp.iloc[120]['label_0'] != self.Event_num):
-                        continue
-                    temp.iloc[120:120+ half_window]['label_0'] = 1
-                    data_all = data_all.append(temp.iloc[120- half_window + 1:120+ half_window])
-                    count+=1
-                except:
-                    print(datasets_path + data_file)
-            #add datasets
-            for data_file in datasets_files5:
-                try:
-                    temp = pd.read_csv(datasets_path5 + data_file, index_col=0)
-                    if (temp.iloc[120]['label_0'] != self.Event_num):
-                        continue
-                    temp.iloc[120:120 + half_window]['label_0'] = 1
-                    data_all = data_all.append(temp.iloc[120 - half_window + 1:120 + half_window])
-                    count += 1
-                except:
-                    print(datasets_path5 + data_file)
-            data_all.to_csv('../datasets/data_all_'+str(self.Event_num)+'.csv')
+            temp = pd.read_csv(datasets_path + data_file, index_col=0)
+            if (temp.iloc[120]['label_0'] != self.Event_num):
+                continue
+            temp.iloc[120:120 + half_window]['label_0'] = 1
+            data_all = data_all.append(temp.iloc[120 - half_window + 1:120 + half_window])
+            count += 1
      
 
         hijack_event_len = data_all.shape[0]
@@ -328,7 +308,7 @@ class Data_Loader(object):
             data_all = pd.read_csv('../result_doc/data_all.csv', index_col=0)
             self.data_cols = data_all.columns
         else:
-            datasets_path = '../datasets/datasets1/'
+            datasets_path = '../datasets/datasets/'
             datasets_path2 = '../datasets/legitimate/'
             # load files path
             datasets_files = self.loadDataSet_path(datasets_path)
