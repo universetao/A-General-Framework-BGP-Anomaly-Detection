@@ -106,7 +106,7 @@ class Detector(object):
         else:
 
 
-            save_epochs=[7,1,4,8,8]
+            save_epochs = [7, 1, 2, 8, 8]
             for i in self.event_nums:
                 self.train(Event_num=i,read_from_file=False, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=128,save_epoch=save_epochs[i-1])
     def train(self,Event_num,read_from_file=True, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=128,save_epoch=10): #the implement of training model
@@ -419,51 +419,40 @@ class Detector(object):
         base_lr=1e-6
         out_lr=1e-4
         output_confidence=False #output confidence or hard label.
-        serial_en=False #serial ensemble model
         if Scheme=='A':
             save_epochs=[0,0,9,0,0]
             w = np.array([1, 1, 1, 1, 1])
             vote_thr=2
         elif Scheme=='B':# need to retrain the model with weak data,
-            self.EPOCH=30
+            self.EPOCH=10
             base_lr = 1e-5
             out_lr = 1e-3
-            output_confidence = True
             labelsmoothing = True
-            save_epochs = [12,6,0,27,2]
-            w = np.array([0.505, 0, 0, 0.5, 0.99])
-            serial_en=True
+            save_epochs = [7, 0, 0, 0, 0]
+            w = np.array([1, 0, 0, 0, 0])
+            vote_thr=1
         elif Scheme=='C':
             self.EPOCH = 10
             output_confidence = True
-            save_epochs = [0, 0, 0, 0, 0]
-            #save_epochs=[9,0,6,0,9]
-            w = np.array([0, 1, 0, 0, 0])
-            vote_thr = 0.4
+            save_epochs = [9, 9, 1, 1, 6]
+            w = np.array([0, 1, 0, 0, 0.5])
+            vote_thr = 0.54
         elif Scheme=='D':
             self.EPOCH=30
             output_confidence=True
-            save_epochs = [0, 0, 0, 0, 0]
-            #save_epochs = [19,0,27,29,8]
-            w=np.array([0,1,0,0,0])
-            vote_thr=0.01
+            save_epochs = [8, 0, 17, 9, 1]
+            w = np.array([0, 0, 1, 0, 0])
+            vote_thr = 0.1
 
         for i,event_name in enumerate(self.Event_list): #to retrain all the model
             self.transfer_fine_tune(event_name,Scheme=Scheme,save_epoch=save_epochs[i],confidence=output_confidence,labelsmoothing=labelsmoothing,base_lr=base_lr,out_lr=out_lr)
 
         self.true_pred['new'] = 0
         y_em = self.true_pred.drop(columns=['true'])
-        if serial_en:
-            for i in range(len(self.true_pred)):
-                for j in range(5):
-                    if w[j] == 0:
-                        continue
-                    if ((y_em.iloc[i, [j]]).sum() >= w[j]):
-                        self.true_pred['new'].iloc[i] = 1
-        else: #parallel ensemble
-            for i in range(len(self.true_pred)):
-                if ((w*y_em.iloc[i,[0,1,2,3,4]]).sum() >= vote_thr):
-                    self.true_pred['new'].iloc[i] = 1
+
+        for i in range(len(self.true_pred)):
+            if ((w*y_em.iloc[i,[0,1,2,3,4]]).sum() >= vote_thr):
+                self.true_pred['new'].iloc[i] = 1
         print("the ensemble pred result:")
         print(classification_report(y_pred=self.true_pred['new'], y_true=self.true_pred['true'], target_names=['normal', 'abnormal']))
 
