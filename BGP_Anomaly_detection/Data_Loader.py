@@ -48,14 +48,10 @@ class Data_Loader(object):
 
             self.INPUT_SIZE=x.shape[1]
             print('self.INPUT_SIZE',self.INPUT_SIZE)
-            if include_MANRS_data:
-                train_x, test_x, train_y, test_y,eval_x,eval_y = self.__train_test_split_events(x, y0, hijack_event_len,
-                                                                        legitimate_event_len, test_size=0.2,
-                                                                       random_state=42)
-            else:
-                train_x, test_x, train_y, test_y = self.__train_test_split_events_no_MANRS(x, y0, legitimate_event_len,
-                                                                           test_size=0.2,
-                                                                           random_state=42)
+            
+            train_x, test_x, train_y, test_y,eval_x,eval_y = self.__train_test_split_events(x, y0, hijack_event_len,
+                                                                    legitimate_event_len, test_size=0.1,
+                                                                   random_state=42)
 
             np.save('../time_step_data/TimeStep_Orign_train_' + self.Event_name + '_' + str(self.TIME_STEP) + '_WINDOWSIZE_' + str(
                 self.WINDOW_SIZE) + '_X' +str(include_MANRS_data), train_x)
@@ -96,17 +92,12 @@ class Data_Loader(object):
         legitimate_x = x.iloc[hijack_event_len:legitimate_event_len].values
         legitimate_y = y.iloc[hijack_event_len:legitimate_event_len].values
 
-        # add_x=x.iloc[legitimate_event_len:-1].values
-
         event_num = (int)(len(event_x) / self.Hijack_Window)
         Y = []
 
         legitimate_num = (int)(len(legitimate_x) / self.Legitimate_Window)
         legitimate_Y = []
-        #
-        # Add_num=(int)(len(add_x)/self.AddNoramalWin)
-        # add_Y=[]
-
+       
         for event in tqdm(range(0, event_num, 1)):
             bottom = event * self.Hijack_Window
 
@@ -133,19 +124,7 @@ class Data_Loader(object):
                 tempx = tempx[np.newaxis, :]
                 legitimate_X = np.concatenate((legitimate_X, tempx), axis=0)
                 legitimate_Y.append(legitimate_y[bottom + self.Anomaly_Timestep])
-        # for event in tqdm(range(0, Add_num, 1)):
-        #     bottom = event * self.AddNoramalWin
-        #
-        #     if bottom == 0:
-        #         tempx = add_x[bottom:bottom + self.AddNoramalWin, :]
-        #         tempx = tempx[np.newaxis, :]
-        #         add_X = tempx
-        #         add_Y.append(0)
-        #     else:
-        #         tempx = add_x[bottom:bottom + self.AddNoramalWin, :]
-        #         tempx = tempx[np.newaxis, :]
-        #         add_X = np.concatenate((add_X, tempx), axis=0)
-        #         add_Y.append(0)
+        
 
         train_event_X, test_event_x, train_event_Y, test_event_y = train_test_split(X, Y, test_size=test_size,
                                                                                     random_state=random_state)
@@ -158,10 +137,7 @@ class Data_Loader(object):
         train_legitimate_x, eval_legitimate_x, train_legitimate_y, eval_legitimate_y = train_test_split(train_le_x,train_le_y,test_size=0.2,random_state=random_state)
 
 
-        # train_add_x, test_add_x, train_add_y, test_add_y = train_test_split(add_X,
-        #                                                                                                 add_Y,
-        #                                                                                                 test_size=test_size,
-        #                                                                                                 random_state=random_state)
+     
         train_event_x = train_event_x.reshape([-1, self.INPUT_SIZE])
         test_event_x = test_event_x.reshape([-1, self.INPUT_SIZE])
         eval_event_x=eval_event_x.reshape([-1, self.INPUT_SIZE])
@@ -169,8 +145,7 @@ class Data_Loader(object):
         train_legitimate_x = train_legitimate_x.reshape([-1, self.INPUT_SIZE])
         test_legitimate_x = test_legitimate_x.reshape([-1, self.INPUT_SIZE])
         eval_legitimate_x=eval_legitimate_x.reshape([-1, self.INPUT_SIZE])
-        # train_add_x = train_add_x.reshape([-1, self.INPUT_SIZE])
-        # test_add_x = test_add_x.reshape([-1, self.INPUT_SIZE])
+        
 
         train_event_len = train_event_x.shape[0]
         test_event_len = test_event_x.shape[0]
@@ -185,8 +160,7 @@ class Data_Loader(object):
         train_legitimate_len = train_event_x.shape[0]
         test_legitimate_len= test_event_x.shape[0]
 
-        # train_event_x = np.concatenate((train_event_x, train_add_x), axis=0)
-        # test_event_x = np.concatenate((test_event_x, test_add_x), axis=0)
+    
 
         from sklearn.preprocessing import MinMaxScaler
         from sklearn.preprocessing import Normalizer
@@ -207,15 +181,7 @@ class Data_Loader(object):
                                                                             train_legitimate_y,
                                                                             self.Legitimate_Window,self.Legitimate_TIME_STEP)
 
-        # add_timestep_X, add_timestep_y = self.to_timestep_dataset(x[train_legitimate_len:-1],
-        #                                                                     train_add_y,
-        #                                                                     self.AddNoramalWin,self.Legitimate_TIME_STEP)
-        # downSampling
-        # legitimate_timestep_X, drop_x, legitimate_timestep_y, drop_y = train_test_split(legitimate_timestep_X,
-        #                                                                                                 legitimate_timestep_y,
-        #                                                                                                 test_size=test_size*4,
-        #                                                                                                 random_state=random_state)
-        # timestep_X = np.concatenate((hijack_timestep_X, legitimate_timestep_X,add_timestep_X), axis=0)
+        
         timestep_X = np.concatenate((hijack_timestep_X, legitimate_timestep_X), axis=0)
         hijack_timestep_y.extend(legitimate_timestep_y)
         # hijack_timestep_y.extend(add_timestep_y)
@@ -226,15 +192,11 @@ class Data_Loader(object):
         test_legitimate_timestep_X, test_legitimate_timestep_y = self.to_timestep_dataset(test_x[test_event_len:test_legitimate_len],
                                                                                       test_legitimate_y,
                                                                                       self.Legitimate_Window,self.Legitimate_TIME_STEP)
-        # test_add_timestep_X, test_add_timestep_y = self.to_timestep_dataset(
-        #     test_x[test_legitimate_len:-1],
-        #     test_add_y,
-        #     self.AddNoramalWin,self.Legitimate_TIME_STEP)
-        # test_timestep_X = np.concatenate((test_hijack_timestep_X, test_legitimate_timestep_X,test_add_timestep_X), axis=0)
+    
         test_timestep_X = np.concatenate((test_hijack_timestep_X, test_legitimate_timestep_X),
                                          axis=0)
         test_hijack_timestep_y.extend(test_legitimate_timestep_y)
-        # test_hijack_timestep_y.extend(test_add_timestep_y)
+  
         print(test_timestep_X.shape)
 
         eval_hijack_timestep_X, eval_hijack_timestep_y = self.to_timestep_dataset(eval_x[0:eval_event_len],
@@ -250,80 +212,53 @@ class Data_Loader(object):
 
 
         return timestep_X, test_timestep_X, hijack_timestep_y, test_hijack_timestep_y, eval_timestep_X, eval_hijack_timestep_y
-    def __train_test_split_events_no_MANRS(self):
-        pass
-    def __load_all_dataset(self,include_MANRS_data=True):
-        datasets_path = '/home/dyt/BGP/datasets/'
-
-        # load files path
-        datasets_files = self.loadDataSet_path(datasets_path)
-        # spilt files to test and train
-
-        data_all = pd.DataFrame()
-
-        half_window = (int)((self.Hijack_Window + 1) / 2)
-        print(half_window)
-        # train_data
-        for data_file in datasets_files:
-            try:
-                temp = pd.read_csv(datasets_path + data_file, index_col=0)
-                data_all = data_all.append(temp.iloc[120 - half_window + 1:120 + half_window])
-            except:
-                print(datasets_path + data_file)
-        hijack_event_len = data_all.shape[0]
-        if include_MANRS_data:
-            datasets_path2 = '/home/dyt/BGP/legitimate/'
-            datasets_files2 = self.loadDataSet_path(datasets_path2)
-            for data_file in datasets_files2:
-                try:
-                    temp = pd.read_csv(datasets_path2 + data_file, index_col=0)
-                    data_all = data_all.append(temp)
-                except:
-                    print(datasets_path2 + data_file)
-        # data prepocessing
-        data_all = data_all.drop(
-            columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
-            axis=1)
-
-        data_all.fillna(0, inplace=True)
-
-        self.__add_count(data_all, 14, 21, 11, 11)
-        data_all = pd.DataFrame(data_all, columns=self.data_cols)
-        data_all.fillna(0, inplace=True)
-        print(data_all)
-
-        # change test features to train features
-
-        x, y0, y1, y2, y3 = data_all.drop(columns=['label_0', 'label_1', 'label_2', 'label_3'], axis=1), data_all[
-            'label_0'], data_all['label_1'], data_all['label_2'], data_all['label_3']
-
-        return x, y0, hijack_event_len
+ 
     def __load_pd_dataset(self,include_MANRS_data=True,baseline=False):
         count = 0
-        datasets_path = '/home/dyt/BGP/datasets/'
-        # load files path
-        datasets_files = self.loadDataSet_path(datasets_path)
-        # spilt files to test and train
-
-        data_all = pd.DataFrame()
-
         half_window = (int)((self.Hijack_Window + 1) / 2)
-        self.Anomaly_Timestep=half_window
-        print(half_window)
-        # train_data
-        for data_file in datasets_files:
-            try:
-                temp = pd.read_csv(datasets_path + data_file, index_col=0)
-                if (temp.iloc[120]['label_0'] != self.Event_num):
-                    continue
-                temp.iloc[120:120+ half_window]['label_0'] = 1
-                data_all = data_all.append(temp.iloc[120- half_window + 1:120+ half_window])
-                count+=1
-            except:
-                print(datasets_path + data_file)
+        self.Anomaly_Timestep = half_window
+
+        import os
+        if os.path.exists('../datasets/data_all_'+str(self.Event_num)+'.csv'):
+            data_all=pd.read_csv('../datasets/data_all.csv')
+        else:
+            datasets_path = '../datasets/datasets1'
+            datasets_path5='../datasets/datasets2'
+            # load files path
+            datasets_files = self.loadDataSet_path(datasets_path)
+            datasets_files5 = self.loadDataSet_path(datasets_path5)
+            # spilt files to test and train
+
+            data_all = pd.DataFrame()
+
+            # train_data
+            for data_file in datasets_files:
+                try:
+                    temp = pd.read_csv(datasets_path + data_file, index_col=0)
+                    if (temp.iloc[120]['label_0'] != self.Event_num):
+                        continue
+                    temp.iloc[120:120+ half_window]['label_0'] = 1
+                    data_all = data_all.append(temp.iloc[120- half_window + 1:120+ half_window])
+                    count+=1
+                except:
+                    print(datasets_path + data_file)
+            #add datasets
+            for data_file in datasets_files5:
+                try:
+                    temp = pd.read_csv(datasets_path5 + data_file, index_col=0)
+                    if (temp.iloc[120]['label_0'] != self.Event_num):
+                        continue
+                    temp.iloc[120:120 + half_window]['label_0'] = 1
+                    data_all = data_all.append(temp.iloc[120 - half_window + 1:120 + half_window])
+                    count += 1
+                except:
+                    print(datasets_path5 + data_file)
+            data_all.to_csv('../datasets/data_all_'+str(self.Event_num)+'.csv')
+     
+
         hijack_event_len = data_all.shape[0]
         if include_MANRS_data:
-            datasets_path2 = '/home/dyt/BGP/legitimate/'
+            datasets_path2 = '../datasets/legitimate/'
             datasets_files2 = self.loadDataSet_path(datasets_path2)
             for data_file in datasets_files2:
                 try:
@@ -332,19 +267,11 @@ class Data_Loader(object):
                 except:
                     print(datasets_path2 + data_file)
         legitimate_event_len = data_all.shape[0]
-        # for data_file in datasets_files:
-        #     try:
-        #         temp = pd.read_csv(datasets_path + data_file, index_col=0)
-        #         if (temp.iloc[120]['label_0'] != self.Event_num):
-        #             continue
-        #         data_all = data_all.append(temp.iloc[0:self.AddNoramalWin])
-        #     except:
-        #         print(datasets_path + data_file)
+        
         # data prepocessing
         data_all = data_all.drop(
             columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
             axis=1)
-
         data_all.fillna(0, inplace=True)
 
         self.__add_count(data_all, 14, 21, 11, 11)
@@ -398,11 +325,11 @@ class Data_Loader(object):
 
     def __loadDataCol(self,read_from_file=False):
         if read_from_file:
-            data_all = pd.read_csv('/home/dyt/BGP/result_doc/data_all.csv', index_col=0)
+            data_all = pd.read_csv('../result_doc/data_all.csv', index_col=0)
             self.data_cols = data_all.columns
         else:
-            datasets_path = '/home/dyt/BGP/datasets/'
-            datasets_path2 = '/home/dyt/BGP/legitimate/'
+            datasets_path = '../datasets/datasets1/'
+            datasets_path2 = '../datasets/legitimate/'
             # load files path
             datasets_files = self.loadDataSet_path(datasets_path)
             datasets_files2 = self.loadDataSet_path(datasets_path2)
@@ -444,7 +371,7 @@ class Data_Loader(object):
                     print(i)
                     data_all.drop(columns=i, axis=1, inplace=True)
             # change test features to train features
-            data_all.to_csv('/home/dyt/BGP/result_doc/data_all.csv')
+            data_all.to_csv('../result_doc/data_all.csv')
             self.data_cols = data_all.columns
 
     def to_timestep_dataset(self,x, y, event_len,time_step):  # x,y are array
@@ -567,6 +494,85 @@ class Data_Loader(object):
                             data_all['label_0'], data_all['label_1'], data_all['label_2'], data_all['label_3']
         return x, y0
 
+    def loadroute_leak_train_test(self,scheme='A'):
+        datasets_path = '../test/'
+        # load files path
+        datasets_files = self.loadDataSet_path(datasets_path)
+        # spilt files to test and train
+        data_all = pd.DataFrame()
+        test_all= pd.DataFrame()
+        if scheme=='A':
+            train_set=[datasets_files[0],datasets_files[1],datasets_files[2]]
+            test_set=[datasets_files[3]]
+        elif scheme=='B':
+            train_set = [datasets_files[0], datasets_files[2], datasets_files[3]]
+            test_set = [datasets_files[1]]
+            drop_MOAS_prefix_num=True # reduce the high confidence caused by MOSA_prefix_num, for re-training
+
+        elif scheme=='C':
+            train_set = [datasets_files[0], datasets_files[1], datasets_files[3]]
+            test_set = [datasets_files[2]]
+        elif scheme=='D':
+            train_set = [datasets_files[1], datasets_files[2], datasets_files[3]]
+            test_set = [datasets_files[0]]
+        # train_data
+
+        for data_file in train_set:# you can change the file index in training set to build the scheme
+            try:
+                temp = pd.read_csv(datasets_path + data_file, index_col=0)
+                data_all = data_all.append(temp)
+                print(datasets_path + data_file)
+            except:
+                print(traceback.print_exc())
+                print(datasets_path + data_file)
+        for data_file in test_set:
+            try:
+                temp = pd.read_csv(datasets_path + data_file, index_col=0)
+                test_all = test_all.append(temp)
+                print(datasets_path + data_file)
+            except:
+                print(traceback.print_exc())
+                print(datasets_path + data_file)
+
+        # data prepocessing
+        data_all = data_all.drop(
+            columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
+            axis=1)
+
+
+
+        data_all.fillna(0, inplace=True)
+
+        self.__add_count(data_all, 14, 21, 11, 11)
+        data_all = pd.DataFrame(data_all, columns=self.data_cols)
+
+        if drop_MOAS_prefix_num:
+            data_all = data_all.drop(
+                columns=['MOAS_prefix_num'],
+                axis=1)
+        data_all.fillna(0, inplace=True)
+        print(data_all)
+
+        test_all = test_all.drop(
+            columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
+            axis=1)
+
+        test_all.fillna(0, inplace=True)
+
+        self.__add_count(test_all, 14, 21, 11, 11)
+        test_all = pd.DataFrame(test_all, columns=self.data_cols)
+
+        test_all.fillna(0, inplace=True)
+        # change test features to train features
+
+        x, y0, y1, y2, y3 = data_all.drop(columns=['label_0', 'label_1', 'label_2', 'label_3'], axis=1), \
+                            data_all['label_0'], data_all['label_1'], data_all['label_2'], data_all['label_3']
+
+        testx, testy0, testy1, testy2, testy3 = test_all.drop(columns=['label_0', 'label_1', 'label_2', 'label_3'], axis=1), \
+                            test_all['label_0'], test_all['label_1'], test_all['label_2'], test_all['label_3']
+
+        return x, y0,testx,testy0
+
     def loadDataSet_path(self,datasets_path):  # 0 means all
         import os
 
@@ -684,142 +690,7 @@ class Data_Loader(object):
                 ann_shorter_group.append(re.search("ann_shorter_\d+", col).string)
         return diff_group,len_group,ann_longer_group,ann_shorter_group
 
-    def plot_tsne(self):
-        from time import time
-
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
-        from matplotlib.ticker import NullFormatter
-
-        from sklearn import manifold, datasets
-
-
-        train_x, train_y, test_x, test_y,eval_x,eval_y = self.loadDataSet(read_from_file=False,
-                                                        include_MANRS_data=True)
-
-        train_x=torch.mean(train_x,dim=-2)
-        n_components = 2
-
-        fig = plt.figure(figsize=(8, 8))
-        # 创建了一个figure，标题为"Manifold Learning with 1000 points, 10 neighbors"
-        # plt.suptitle("Manifold Learning with %i points, %i neighbors"
-        #              % (1000, n_neighbors), fontsize=14)
-
-        '''t-SNE'''
-        t0 = time()
-        train_x=train_x.detach().numpy()
-        train_y = train_y.detach().numpy()
-        tsne = manifold.TSNE(n_components=n_components, init='pca', random_state=0)
-        X = tsne.fit_transform(train_x)  # 转换后的输出
-        t1 = time()
-        print("t-SNE: %.2g sec" % (t1 - t0))  # 算法用时
-        ax = fig.add_subplot(1, 1, 1)
-        print(train_y)
-        print(X)
-        plt.scatter(X[:, 0][train_y == 0], X[:, 1][train_y == 0], color='green',label='legitimate ')
-        plt.scatter(X[:, 0][train_y == 1], X[:, 1][train_y == 1], color='red',label='prefix hijack')
-        plt.title("t-SNE (%.2g sec)" % (t1 - t0))
-        ax.xaxis.set_major_formatter(NullFormatter())  # 设置标签显示格式为空
-        ax.yaxis.set_major_formatter(NullFormatter())
-        plt.axis('tight')
-        plt.legend()
-        fig.savefig('../result_doc/tsnd_'+self.Event_name+'.png', dpi=600)
-        plt.show()
-    def measure_datasets(self):
-        datasets_path = '/home/dyt/BGP/datasets/'
-
-        # load files path
-        datasets_files = self.loadDataSet_path(datasets_path)
-        # spilt files to test and train
-
-        data_all = pd.DataFrame()
-
-        half_window = 15
-        print(half_window)
-        # train_data
-        for data_file in datasets_files:
-            try:
-                temp = pd.read_csv(datasets_path + data_file, index_col=0)
-                temp = temp.drop(
-                    columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
-                    axis=1)
-                feature_sum = temp.iloc[120 - half_window + 1:120 + half_window].sum()
-                feature_sum['label_0'] = temp['label_0'].iloc[120]
-                data_all = data_all.append(feature_sum, ignore_index=True)
-            except:
-
-                print(datasets_path + data_file)
-
-
-        datasets_path2 = '/home/dyt/BGP/legitimate/'
-        datasets_files2 = self.loadDataSet_path(datasets_path2)
-        for data_file in datasets_files2:
-            try:
-                temp = pd.read_csv(datasets_path2 + data_file, index_col=0)
-                temp = temp.drop(
-                    columns=['time', 'new_sub_prefix', 'MOAS_AS', 'Victim_AS', 'MOAS', 'withdraw_unique_prefix'],
-                    axis=1)
-                for i in range(0, 1440, 30):
-                    feature_sum = temp.iloc[i:i + 30].sum()
-                    data_all = data_all.append(feature_sum, ignore_index=True)
-            except:
-                print(datasets_path2 + data_file)
-        data_all.fillna(0, inplace=True)
-        return data_all
-    def measure_edge(self):
-        data_all=self.measure_datasets()
-        print(data_all)
-        diff_group,len_group,ann_longer_group,ann_shorter_group=self.__divid_into_group(data_all)
-        diff_group=self.sort_group(diff_group,'_',1)
-        len_group = self.sort_group(len_group, 'h', 1)
-        ann_longer_group=self.sort_group(ann_longer_group, '_', 2)
-        ann_shorter_group = self.sort_group(ann_shorter_group, '_', 2)
-        data0 = data_all[data_all['label_0'] == 0]
-        data1 = data_all[data_all['label_0'] == 1]
-        data2 = data_all[data_all['label_0'] == 2]
-        data3 = data_all[data_all['label_0'] == 3]
-        data4 = data_all[data_all['label_0'] == 4]
-        data5 = data_all[data_all['label_0'] == 5]
-        group_name=['Diff','len','longer','shorter']
-        Event_Name=['Normal','Prefix_Hijack','Route_Leak','Breakout','Fake_route','Defcon']
-        groups=[diff_group,len_group,ann_longer_group,ann_shorter_group]
-        i=0
-        flags=['_','h','_','_']
-        nums=[1,1,2,2]
-        for group in groups:
-            num_group=[]
-            for pl in group:
-                num_group.append(pl.split(flags[i])[nums[i]])
-
-            a = data0[group].quantile(0.9)
-            b = data1[group].quantile(0.9)
-            c = data2[group].quantile(0.9)
-            d = data3[group].quantile(0.9)
-            e = data4[group].quantile(0.9)
-            f = data5[group].quantile(0.9)
-            p=pd.DataFrame(columns=Event_Name)
-            print(a)
-            p['Normal']=a
-            p['Prefix_Hijack']=b
-            p['Route_Leak']=c
-            p['Breakout']=d
-            p['Fake_route']=e
-            p['Defcon']=f
-
-            p=p.reindex(num_group)
-            print(p)
-            p.to_csv('../result_doc/'+group_name[i]+'.csv')
-            i+=1
-    def measure_prefix(self):
-        data_all=self.measure_datasets()
-        Prefix_Features=['MOAS_prefix_num','MOAS_num','new_MOAS','new_prefix_num','label_0']
-        p=data_all[Prefix_Features]
-        p.to_csv('../result_doc/Prefix_Feature.csv')
-    def measure_Volume(self):
-        data_all=self.measure_datasets()
-        Prefix_Features=['MOAS_Ann_num','own_Ann_num','duplicate_ann','withdraw_unique_prefix_num','withdraw_num','Diff_Ann','label_0']
-        p=data_all[Prefix_Features]
-        p.to_csv('../result_doc/Volume_Feature.csv')
+  
     def bigger(self,i, j,flag,num):
         return (int(i.split(flag)[num]) - int(j.split(flag)[num])) > 0
 
@@ -835,6 +706,6 @@ class Data_Loader(object):
 #     d=Data_Loader(Event_name=i,Event_num=1)
 #     d.plot_tsne()
 # train_x, train_y, test_x, test_y = d.loadDataSet(read_from_file=False,include_MANRS_data=True)
-d=Data_Loader(Event_name='prefix_hijack',Event_num=1)
-d.measure_prefix()
-d.measure_Volume()
+#d=Data_Loader(Event_name='prefix_hijack',Event_num=1)
+#d.measure_prefix()
+#d.measure_Volume()
