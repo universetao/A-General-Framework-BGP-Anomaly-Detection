@@ -1,10 +1,11 @@
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 from LSTM_model import LSTM
 from Self_Attention_LSTM import SA_LSTM
 from Data_Loader import Data_Loader
@@ -12,20 +13,64 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.utils.data as Data
+
+import torch.nn.functional as F
+from torch.nn.modules.loss import _WeightedLoss
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    import os
+    import random
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+setup_seed(20)
+
+
+class LabelSmoothingLoss(nn.Module):
+    def __init__(self, classes, smoothing=0.0, dim=-1, weight = None):
+        """if smoothing == 0, it's one-hot method
+           if 0 < smoothing < 1, it's smooth method
+        """
+        super(LabelSmoothingLoss, self).__init__()
+        self.confidence = 1.0 - smoothing
+        self.smoothing = smoothing
+        self.weight = weight
+        self.cls = classes
+        self.dim = dim
+
+    def forward(self, pred, target):
+        assert 0 <= self.smoothing < 1
+        pred = pred.log_softmax(dim=self.dim)
+
+        if self.weight is not None:
+            pred = pred * self.weight.unsqueeze(0)
+
+        with torch.no_grad():
+            true_dist = torch.zeros_like(pred)
+            true_dist.fill_(self.smoothing / (self.cls - 1))
+            true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
+        return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
+
 class Detector(object):
     Event_list = ['prefix_hijack', 'route_leak', 'breakout', 'edge', 'defcon']
     event_nums = [1, 2, 3, 4, 5]
     models=[]
-    EPOCH = 100
+    EPOCH = 10
     LSTM_NUM = 1
     BATCH_SIZE = 8
     Hidden_SIZE = 128
     LSTM_layer_NUM = 1
     LR=0.001
-    WINDOW_SIZE = 30
+    WINDOW_SIZE = 10
     INPUT_SIZE = 83
     TIME_STEP=1
-    def __init__(self,EPOCH = 30,
+    true_pred=pd.DataFrame()
+    def __init__(self,EPOCH = 10,
                 LSTM_NUM = 1,
                 BATCH_SIZE = 8,
                 Hidden_SIZE = 128,
@@ -35,114 +80,54 @@ class Detector(object):
         self.Hidden_SIZE=Hidden_SIZE
         self.LSTM_layer_NUM=LSTM_layer_NUM
         self.WINDOW_SIZE=WINDOW_SIZE
-    def plot_confidence_tree(self):
-        Event_name = 'all'
-        event_List = ['prefix_hijack', 'route_leak', 'edge', 'defcon']
-        # event_List = [ 'route_leak', 'breakout', 'edge', 'defcon']
-        loader = Data_Loader(Event_name=Event_name, Event_num=0,WINDOW_SIZE=self.WINDOW_SIZE,Hijack_Window=39)
-        self.INPUT_SIZE = loader.INPUT_SIZE
-        train_x, train_y, test_x, test_y = loader.loadDataSet(read_from_file=False,
-                                                              include_MANRS_data=True)
-        confidence_df = pd.DataFrame()
-        confidence_test_df = pd.DataFrame()
 
-        from collections import defaultdict
-
-        for event_name in event_List:
-            print(event_name + '\n')
-            # / home / dongyutao / BGP_LSTM / best_lstm_route_leak.pkl
-            Path = '../params/best_lstm_params_' + event_name + '.pkl'
-            model = LSTM()
-            # model = model.cuda()
-            model.load_state_dict(torch.load(Path))
-            # model = torch.load(Path)
-            print('load_finish')
-
-            print('begin_pred')
-            print(train_x.shape)
-            pred_output = model(train_x)
-            print(pred_output.shape)
-            # pred_y = torch.max(pred_output, 1)[1].detach().numpy()
-            pred_output = pred_output.detach().numpy()
-            # confidence_df[event_name + '_normal'] = pred_output[:,0]
-            confidence_df[event_name] = pred_output[:, 1]
-            # confidence_df[event_name] = pred_y
-            pred_output_test = model(test_x)
-            pred_output_test = pred_output_test.detach().numpy()
-            # pred_y_test = torch.max(pred_output_test, 1)[1].detach().numpy()
-            # confidence_test_df[event_name + '_normal'] = pred_output_test[:,0]
-            confidence_test_df[event_name] = pred_output_test[:, 1]
-            # confidence_test_df[event_name] =pred_output_test
-
-        # / home / dongyutao / BGP_LSTM / best_lstm_route_leak.pkl
-        Path = '../params/best_lstm_params_' + 'breakout2' + '.pkl'
-        model = LSTM()
-        model.load_state_dict(torch.load(Path))
-        print('load_finish')
-
-        print('begin_pred')
-        print(train_x.shape)
-        pred_output = model(train_x)
-        print(pred_output.shape)
-        pred_y = torch.max(pred_output, 1)[1].detach().numpy()
-        confidence_df['breakout'] = pred_y
-        pred_output_test = model(test_x)
-        pred_y_test = torch.max(pred_output_test, 1)[1].detach().numpy()
-
-        confidence_test_df['breakout'] = pred_y_test
-
-        print('confidence_df shape:', confidence_df.shape)
-        X, Y = confidence_df.drop(columns=['breakout'], axis=1), confidence_df['breakout']
-        t_x, t_y = confidence_test_df.drop(columns=['breakout'], axis=1), confidence_test_df['breakout']
-
-        from sklearn.tree import DecisionTreeClassifier
-        from sklearn import tree
-        clf = DecisionTreeClassifier(max_depth=4)
-        clf = clf.fit(X, Y)
-        pred_y = clf.predict(t_x)
-        from sklearn.metrics import classification_report
-        # print(classification_report(y_true=test_y, y_pred=pred_y,
-        #                             target_names=['正常', '前缀劫持', '路由泄露', '中断', '虚假路径', 'defcon']))
-        print(classification_report(y_true=t_y, y_pred=pred_y, target_names=['未发生中断', '发生中断']))
-        print(X.columns)
-        import matplotlib.pyplot as plt
-        # fn = ['sepal length (cm)', 'sepal width (cm)', 'petal length (cm)', 'petal width (cm)']
-        # cn = ['normal', 'prefix_hijack', 'route_leak', 'breakout', 'edge', 'defcon']
-        cn = ['no_breakout', 'breakout']
-        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 3), dpi=600)
-        tree.plot_tree(clf,
-                       feature_names=X.columns,
-                       class_names=cn,
-                       filled=True)
-        plt.show()
-        fig.savefig('./result_pic/confidence_tree.png', dpi=600)
     def set_sliding_window_para(self):
-        for i in self.event_nums:
+        for i in [4]:
             for window_size in range(15,35,5):
                 for j in range (3):
                         self.train(Event_num=i,read_from_file=False, include_MANRS_data=True,WINDOW_SIZE=window_size,HIDDEN_SIZE=128)
     def set_hidden_size_para(self):
-        for i in self.event_nums:
+        for i in [4]:
             for hidden_size in [64, 128, 256, 512]:
                 for j in range (3):
                         self.train(Event_num=i,read_from_file=False, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=hidden_size)
     def begin_train_all_model(self,baseline=False,baseline_Feature=False):
+        '''
+        description: to train all the model from our weak dataset
+        :param baseline: if is the baseline model (Bool)
+        :param baseline_Feature: if is the baseline feature set (Bool)
+        :return: save all model under the path ../params/
+        '''
 
 
         if baseline:
             for i in self.event_nums:
                 self.baseline(Event_num=i, read_from_file=False, include_MANRS_data=True,baseline_Feature=baseline_Feature)
         else:
+
+
+            save_epochs=[7,1,4,8,8]
             for i in self.event_nums:
-                for window_size in range(15,35,5):
-                    for hidden_size in [64,128,256,512]:
-                        self.train(Event_num=i,read_from_file=False, include_MANRS_data=True,WINDOW_SIZE=window_size,HIDDEN_SIZE=hidden_size)
-    def train(self,Event_num,read_from_file=True, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=128):
+                self.train(Event_num=i,read_from_file=False, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=128,save_epoch=save_epochs[i-1])
+    def train(self,Event_num,read_from_file=True, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=128,save_epoch=10): #the implement of training model
+        '''
+
+        :param Event_num: the index type of the anomaly
+        :param read_from_file: already have the file to read
+        :param include_MANRS_data: join the legitimate data
+        :param WINDOW_SIZE: the sliding window size
+        :param HIDDEN_SIZE: the hidden size of LSTM model
+        :return: save model under the path ../params/best_lstm_params_' + Event_name + '2.pkl
+        '''
+
+
         self.WINDOW_SIZE=WINDOW_SIZE
         self.Hidden_SIZE=HIDDEN_SIZE
 
+        global SA_LSTM_flag
         Event_name=self.Event_list[Event_num - 1]
-        target_list = ['正常', Event_name]
+        Path = '../params/best_lstm_params_' + Event_name + '.pkl'
+        target_list = ['normal', Event_name]
         loader=Data_Loader(Event_name=Event_name,Event_num=Event_num,TIME_STEP=1,WINDOW_SIZE=self.WINDOW_SIZE)
 
         train_x, train_y, test_x, test_y,eval_x,eval_y = loader.loadDataSet(read_from_file=read_from_file,
@@ -155,9 +140,13 @@ class Detector(object):
         eval_y=eval_y.numpy()
         test_x = test_x.cuda()
         test_y = test_y.numpy()
+        if SA_LSTM_flag:
+            lstm = SA_LSTM(WINDOW_SIZE=self.WINDOW_SIZE, INPUT_SIZE=self.INPUT_SIZE, Hidden_SIZE=self.Hidden_SIZE,
+                           LSTM_layer_NUM=self.LSTM_layer_NUM)
+        else:
+            lstm = LSTM(WINDOW_SIZE=self.WINDOW_SIZE, INPUT_SIZE=self.INPUT_SIZE, Hidden_SIZE=self.Hidden_SIZE,
+                       LSTM_layer_NUM=self.LSTM_layer_NUM)
 
-        lstm = SA_LSTM(WINDOW_SIZE=self.WINDOW_SIZE,INPUT_SIZE=self.INPUT_SIZE,Hidden_SIZE=self.Hidden_SIZE,LSTM_layer_NUM=self.LSTM_layer_NUM)
-        print(lstm)
         lstm = lstm.cuda()
         optimizer = torch.optim.Adam(lstm.parameters(), lr=self.LR)
 
@@ -168,14 +157,16 @@ class Detector(object):
         best_f1_score = 0.0
         best_epoch = 0
 
-        train_length = len(train_loader)
+        #train_length = len(train_loader)
 
         for epoch in range(self.EPOCH):
             for step, (x, y) in tqdm(enumerate(train_loader)):
                 x = x.cuda()
                 y = y.cuda()
-
-                output , attn_weights= lstm(x)
+                if SA_LSTM_flag:
+                    output , attn_weights= lstm(x)
+                else:
+                    output = lstm(x)
 
                 loss = loss_func(output, y)
                 optimizer.zero_grad()
@@ -183,11 +174,14 @@ class Detector(object):
                 optimizer.step()
 
                 if step % 10000 == 0:
-                    eval_output,attn_weights = lstm(eval_x)
+                    if SA_LSTM_flag:
+                        eval_output,attn_weights = lstm(eval_x)
+                    else:
+                        eval_output = lstm(eval_x)
                     pred_y = torch.max(eval_output, 1)[1].cpu().data.numpy()
 
-                    print(pred_y)
-                    print(eval_y)
+                    #print(pred_y)
+                    #print(eval_y)
                     accuracy = float(np.sum(pred_y == eval_y)) / float(eval_y.size)
                     print('Epoch: ', epoch, '| train loss: %.4f' % loss.cpu().data.numpy(),
                           '| test accuracy: %.2f' % accuracy)
@@ -198,32 +192,29 @@ class Detector(object):
                     temp_f1 = f1_score(y_pred=pred_y, y_true=eval_y, average='macro')
                     print('temp_f1', temp_f1)
                     # temp_sum=temp_f1+temp_route_f1
-                    if (best_f1_score < temp_f1):
+                    #if (best_f1_score < temp_f1):
+                    if(epoch==save_epoch):
                         print(temp_str + '\n' + str(temp_f1))
-                        with open('../result_doc/test_best_f1' + Event_name + '3.txt', 'a') as f:
+                        with open('../result_doc/test_best_f1' + Event_name + '.txt', 'a') as f:
                             message = 'epoch:' + str(epoch) + ' f1_score:' + str(temp_f1) + '\n'
                             f.write(message)
                         best_f1_score = temp_f1
                         best_epoch = epoch
-                        best_attn_weights=attn_weights.cpu().detach().numpy()
-                        print(best_attn_weights)
-                        attn_weights_df = pd.DataFrame(best_attn_weights)
-                        print(attn_weights_df)
-                        attn_weights_df.to_csv('../result_doc/atten_weights' + '_' + Event_name + '.csv')
-                        torch.save(lstm.state_dict(), '../params/best_lstm_params_' + Event_name + '3.pkl')
+                        torch.save(lstm.state_dict(), Path)
 
 
-
-        Path = '../params/best_lstm_params_' + Event_name + '3.pkl'
         lstm.load_state_dict(torch.load(Path))
-        test_output, attn_weights= lstm(test_x)
+        if SA_LSTM_flag:
+            test_output, attn_weights= lstm(test_x)
+        else:
+            test_output = lstm(test_x)
         pred_y = torch.max(test_output, 1)[1].cpu().data.numpy()
 
         from sklearn.metrics import classification_report
 
         test_report = classification_report(y_true=test_y, y_pred=pred_y,
                                          target_names=target_list)
-        test_parameter_path = '../result_doc/test_parameter' + '_' + Event_name + '3.txt'
+        test_parameter_path = '../result_doc/test_parameter' + '_' + Event_name + '.txt'
         with open(test_parameter_path, 'a') as f:
             message = "TimeStep:" + str(self.TIME_STEP) + '\tWINDOW_SIZE:' + str(
                 self.WINDOW_SIZE) + "\tLSTM_NUM: " + str(
@@ -232,17 +223,22 @@ class Detector(object):
                 self.BATCH_SIZE) + '\tHidden_size: ' + str(
                 self.Hidden_SIZE) + '\tNormalizer：MinMaxScaler' + '\t epoch:' + str(
                 best_epoch) + '\tf1_score:' + str(best_f1_score) + '\n' + 'include_MANRS_data:' + str(
-                include_MANRS_data) + '\t time_bins:30s'+'\n' + test_report + '\n\n'
+                include_MANRS_data) + '\t time_bins:60s'+'\n' + test_report + '\n\n'
             print(message)
 
             f.write(message)
         self.models.append(lstm)
-        attn_weights_df=pd.DataFrame(best_attn_weights)
-        print(attn_weights_df)
-        attn_weights_df.to_csv('../result_doc/atten_weights' + '_' + Event_name + '.csv')
+        #attn_weights_df=pd.DataFrame(best_attn_weights)
+        #print(attn_weights_df)
+        #attn_weights_df.to_csv('../result_doc/atten_weights' + '_' + Event_name + '.csv')
         torch.save(lstm, '../params/lstm' + Event_name + '.pkl')
 
     def test_route_leak(self):
+        '''
+        description: directly use the after-trained model (from weak dataset) to pred the well-known dataset
+        :return: csv file
+        '''
+        global SA_LSTM_flag
         loader = Data_Loader(Event_name='route_leak', Event_num=2)
         self.INPUT_SIZE = loader.INPUT_SIZE
         x, y0 = loader.loadroute_leak()
@@ -259,18 +255,221 @@ class Detector(object):
             test_x = torch.tensor(test_x, dtype=torch.float32)
             test_y = torch.tensor(np.array(test_y))
             Path = '../params/best_lstm_params_' + Event_name + '.pkl'
-            model = SA_LSTM(WINDOW_SIZE=self.WINDOW_SIZE,INPUT_SIZE=self.INPUT_SIZE,Hidden_SIZE=128,LSTM_layer_NUM=1)
-            model.load_state_dict(torch.load(Path))
-            test_output,attn = model(test_x)
+            if SA_LSTM_flag:
+                model = SA_LSTM(WINDOW_SIZE=self.WINDOW_SIZE, INPUT_SIZE=self.INPUT_SIZE, Hidden_SIZE=128,
+                                LSTM_layer_NUM=1)
+                model.load_state_dict(torch.load(Path))
+                test_output, attn = model(test_x)
+            else:
+                model = LSTM(WINDOW_SIZE=self.WINDOW_SIZE, INPUT_SIZE=self.INPUT_SIZE, Hidden_SIZE=128, LSTM_layer_NUM=1)
+                model.load_state_dict(torch.load(Path))
+                test_output = model(test_x)
+
             pred_y = torch.max(test_output, 1)[1].cpu().data.numpy()
             from sklearn.metrics import classification_report
             print(classification_report(y_true=test_y, y_pred=pred_y,
-                                        target_names=['正常', '大型路由劫持']))
+                                        target_names=['Normal', 'Abnomarl ']))
             true_pred['pred_' + Event_name] = pred_y
         true_pred['true'] = test_y
         true_pred.to_csv('../result_doc/pred_true_route_leak_train.csv')
 
-    def test(self,data_path, event_name, window):
+    def transfer_fine_tune(self, Event_name,Scheme='A',save_epoch=0,labelsmoothing=False,confidence=False,base_lr=1e-6,out_lr=1e-4): #the implement of transfer learning
+        loader = Data_Loader(Event_name='route_leak', Event_num=2)
+        train_x, train_y0,test_x,test_y = loader.loadroute_leak_train_test(scheme=Scheme)
+        INPUT_SIZE = train_x.shape[1]
+        true_pred = pd.DataFrame()
+        #Event_name = 'route_leak'
+        self.INPUT_SIZE = loader.INPUT_SIZE
+        print(INPUT_SIZE)
+        import pickle
+
+        scaler = pickle.load(open('../params/' + Event_name + '_scaler.pkl', 'rb'))
+        train_x = scaler.transform(train_x.values)
+        train_x, train_y = loader.to_timestep(x=train_x, y=train_y0.values, event_len=1440)
+        train_x,eval_x,train_y,eval_y=train_test_split(train_x,train_y,test_size=0.2,random_state=42)
+
+        train_x = torch.tensor(train_x, dtype=torch.float32)
+        train_y = torch.tensor(train_y,dtype=torch.long)
+        datasets = Data.TensorDataset(train_x, train_y)
+        train_loader = Data.DataLoader(dataset=datasets, batch_size=self.BATCH_SIZE, shuffle=True, num_workers=2)
+
+        test_x = scaler.transform(test_x.values)
+        test_x, test_y = loader.to_timestep(x=test_x, y=test_y.values, event_len=1440)
+
+        test_x = torch.tensor(test_x, dtype=torch.float32)
+        test_y = torch.tensor(np.array(test_y))
+
+        eval_x=torch.tensor(eval_x, dtype=torch.float32)
+        eval_y = torch.tensor(np.array(eval_y))
+        eval_x = eval_x.cuda()
+        eval_y = eval_y.numpy()
+        test_x = test_x.cuda()
+        test_y = test_y.numpy()
+
+        Path = '../params/best_lstm_params_' + Event_name + '.pkl'
+
+        model = SA_LSTM(WINDOW_SIZE=self.WINDOW_SIZE, INPUT_SIZE=self.INPUT_SIZE, Hidden_SIZE=128,
+                        LSTM_layer_NUM=1)
+        model.load_state_dict(torch.load(Path))
+
+        model = model.cuda()
+        ignored_params = list(map(id, model.out.parameters()))
+        base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
+        optimizer = torch.optim.Adam([{'params': base_params, 'lr': 1e-5},
+                                      {'params': model.out.parameters(),'lr':1e-3}])
+
+
+        if labelsmoothing:
+            print("label smoothing")
+            loss_func = LabelSmoothingLoss(classes=2, smoothing=0.5) #Special variant of CrossEntropyLoss，to prevent overfitting.
+        else:
+            loss_func = nn.CrossEntropyLoss()
+
+        from sklearn.metrics import f1_score
+        best_f1_score = 0.0
+
+        for epoch in range(self.EPOCH):
+            for step, (x, y) in tqdm(enumerate(train_loader)):
+                x = x.cuda()
+                y = y.cuda()
+                output, attn_weights = model(x)
+                #print(y)
+                loss = loss_func(output, y)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                if step % 1400 == 0:
+
+                    eval_output, attn_weights = model(eval_x)
+                    pred_y = torch.max(eval_output, 1)[1].cpu().data.numpy()
+                    accuracy = float(np.sum(pred_y == eval_y)) / float(eval_y.size)
+                    print('Epoch: ', epoch, '| train loss: %.4f' % loss.cpu().data.numpy(),
+                          '| eval accuracy: %.2f' % accuracy)
+                    from sklearn.metrics import classification_report
+
+                    temp_str = classification_report(y_true=eval_y, y_pred=pred_y,
+                                                     target_names=['nomral', 'abnormal'])
+                    a = classification_report(y_true=eval_y, y_pred=pred_y,
+                                                     target_names=['nomral', 'abnormal'],output_dict=True)
+                    #temp_f1=a['abnormal']['f1-score']
+                    #temp_f1 = f1_score(y_pred=pred_y, y_true=eval_y, average='macro')
+                    #print('temp_f1', temp_f1)
+                    # temp_sum=temp_f1+temp_route_f1
+                    #if (best_f1_score < temp_f1):
+                    if (epoch==save_epoch):
+                        print(temp_str + '\n' + str(temp_f1))
+                        with open('../result_doc/retrain' + Event_name + '.txt', 'a') as f:
+                            message = 'epoch:' + str(epoch) + ' f1_score:' + str(temp_f1) + '\n'
+                            f.write(message)
+                        best_f1_score = temp_f1
+                        torch.save(model.state_dict(), '../params/retrain' + Event_name + Scheme+'.pkl')
+
+        path = '../params/retrain' + Event_name + Scheme+'.pkl'
+        model.load_state_dict(torch.load(path))
+        test_output, attn_weights = model(test_x)
+
+        if confidence:
+            output = test_output.cpu().data.numpy()
+            pred_y = output[:, 1] # anomaly confidence
+        else:
+            pred_y = torch.max(test_output, 1)[1].cpu().data.numpy()
+        #test_report = classification_report(y_true=test_y, y_pred=pred_y,
+        #                                    target_names=['Normal', 'Abnormal'])
+        #print(test_report)
+        self.true_pred['pred_' + Event_name] = pred_y
+        self.true_pred['true'] = test_y
+
+    def plot_test_route_leak(self):
+        import matplotlib.pyplot as plt
+
+        import pandas as pd
+        pred = pd.read_csv("../result_doc/pred_true_route_leak_train.csv")
+
+        name_list = ['pred_route_leak', 'pred_prefix_hijack', 'pred_edge', 'pred_defcon', 'pred_breakout']
+        for col in name_list:
+            for i in range(len(pred)):
+                pred[col].iloc[i] *= -1
+
+        plt.figure()
+        ax = plt.axes()
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        plt.yticks([-1, 0, 1], ['Warning', 'Normal', 'Anomaly'])
+        x = [0, 1440, 2880, 4320]
+        tick = ['AS200759', 'AS4761', 'AS4788', 'AS9121']
+        pred['true'].plot(c='red', label='Ground Truth')
+        pred['pred_route_leak'].plot(c='blue', alpha=0.5, label='Route Leak')
+        pred['pred_prefix_hijack'].plot(alpha=0.5, label='Prefix Hijack')
+        pred['pred_edge'].plot(c='green', alpha=0.5, label='Fake Route')
+        pred['pred_defcon'].plot(c='grey', alpha=0.5, label='Defcon')
+        pred['pred_breakout'].plot(c='black', alpha=0.5, label='Breakout')
+        plt.xticks(x, tick)
+        plt.legend()
+        plt.show()
+
+    def transfer_learning(self,vote_thr=2,Scheme='A'): #transfer to the well-known anomalies
+        '''
+
+        :param vote_thr: the voting threshold for ensemble vote
+        :param Scheme: train test spilt scheme
+        :return:
+        '''
+        labelsmoothing=False
+        save_epochs=[]
+        base_lr=1e-6
+        out_lr=1e-4
+        output_confidence=False #output confidence or hard label.
+        serial_en=False #serial ensemble model
+        if Scheme=='A':
+            save_epochs=[0,0,9,0,0]
+            w = np.array([1, 1, 1, 1, 1])
+            vote_thr=2
+        elif Scheme=='B':# need to retrain the model with weak data,
+            self.EPOCH=30
+            base_lr = 1e-5
+            out_lr = 1e-3
+            output_confidence = True
+            labelsmoothing = True
+            save_epochs = [12,6,0,27,2]
+            w = np.array([0.505, 0, 0, 0.5, 0.99])
+            serial_en=True
+        elif Scheme=='C':
+            self.EPOCH = 10
+            output_confidence = True
+            save_epochs = [0, 0, 0, 0, 0]
+            #save_epochs=[9,0,6,0,9]
+            w = np.array([0, 1, 0, 0, 0])
+            vote_thr = 0.4
+        elif Scheme=='D':
+            self.EPOCH=30
+            output_confidence=True
+            save_epochs = [0, 0, 0, 0, 0]
+            #save_epochs = [19,0,27,29,8]
+            w=np.array([0,1,0,0,0])
+            vote_thr=0.01
+
+        for i,event_name in enumerate(self.Event_list): #to retrain all the model
+            self.transfer_fine_tune(event_name,Scheme=Scheme,save_epoch=save_epochs[i],confidence=output_confidence,labelsmoothing=labelsmoothing,base_lr=base_lr,out_lr=out_lr)
+
+        self.true_pred['new'] = 0
+        y_em = self.true_pred.drop(columns=['true'])
+        if serial_en:
+            for i in range(len(self.true_pred)):
+                for j in range(5):
+                    if w[j] == 0:
+                        continue
+                    if ((y_em.iloc[i, [j]]).sum() >= w[j]):
+                        self.true_pred['new'].iloc[i] = 1
+        else: #parallel ensemble
+            for i in range(len(self.true_pred)):
+                if ((w*y_em.iloc[i,[0,1,2,3,4]]).sum() >= vote_thr):
+                    self.true_pred['new'].iloc[i] = 1
+        print("the ensemble pred result:")
+        print(classification_report(y_pred=self.true_pred['new'], y_true=self.true_pred['true'], target_names=['normal', 'abnormal']))
+
+        self.true_pred.to_csv('../result_doc/retrain_'+Scheme+'.csv')
+
+    def test(self,data_path, event_name, window): #API for testing on the other datasets
         x, y0 = Data_Loader.load(data_path, window)
         INPUT_SIZE = x.shape[1]
         true_pred = pd.DataFrame()
@@ -296,7 +495,7 @@ class Detector(object):
             condition_2 = torch.max(test_output, 1)[1].cpu().data.numpy()
             pred_y = condition_1 & condition_2
             from sklearn.metrics import classification_report
-            target_l = ['正常']
+            target_l = ['normal']
             target_l.append(event_name)
             print(classification_report(y_true=test_y, y_pred=pred_y,
                                         target_names=target_l))
@@ -304,12 +503,10 @@ class Detector(object):
         true_pred['true'] = test_y
         true_pred.to_csv('../result_doc/pred_true_' + event_name + '.csv')
 
-    def real_time_detect(self):
-        pass
-    def baseline(self, Event_num, read_from_file=True, include_MANRS_data=True,baseline_Feature=False):
+    def baseline(self, Event_num, read_from_file=True, include_MANRS_data=True,baseline_Feature=False): #baseline method SVM,RF
 
         Event_name = self.Event_list[Event_num - 1]
-        target_list = ['正常', Event_name]
+        target_list = ['normal', Event_name]
         loader = Data_Loader(Event_name=Event_name, Event_num=Event_num,TIME_STEP=1,WINDOW_SIZE=self.WINDOW_SIZE)
 
         train_x, train_y, test_x, test_y,eval_x,eval_y= loader.loadDataSet(read_from_file=read_from_file,
@@ -371,9 +568,12 @@ class Detector(object):
 
 
 
-
+SA_LSTM_flag=True
 detector=Detector()
-# detector.begin_train_all_model(baseline=False,baseline_Feature=False)
-# detector.set_hidden_size_para()
-# detector.train(Event_num=1,read_from_file=False, include_MANRS_data=True,WINDOW_SIZE=30,HIDDEN_SIZE=128)
+detector.begin_train_all_model(baseline=False,baseline_Feature=False)
 detector.test_route_leak()
+detector.transfer_learning(Scheme='A')
+
+
+
+
