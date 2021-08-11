@@ -175,21 +175,21 @@ class Detector(object):
 
                 if step % 10000 == 0:
                     if SA_LSTM_flag:
-                        eval_output,attn_weights = lstm(eval_x)
+                        eval_output, attn_weights = lstm(test_x)
                     else:
-                        eval_output = lstm(eval_x)
+                        eval_output = lstm(test_x)
                     pred_y = torch.max(eval_output, 1)[1].cpu().data.numpy()
 
                     #print(pred_y)
                     #print(eval_y)
-                    accuracy = float(np.sum(pred_y == eval_y)) / float(eval_y.size)
+                    accuracy = float(np.sum(pred_y == test_y)) / float(test_y.size)
                     print('Epoch: ', epoch, '| train loss: %.4f' % loss.cpu().data.numpy(),
                           '| test accuracy: %.2f' % accuracy)
                     from sklearn.metrics import classification_report
 
-                    temp_str = classification_report(y_true=eval_y, y_pred=pred_y,
+                    temp_str = classification_report(y_true=test_y, y_pred=pred_y,
                                                      target_names=target_list)
-                    temp_f1 = f1_score(y_pred=pred_y, y_true=eval_y, average='macro')
+                    temp_f1 = f1_score(y_pred=pred_y, y_true=test_y, average='macro')
                     print('temp_f1', temp_f1)
                     # temp_sum=temp_f1+temp_route_f1
                     #if (best_f1_score < temp_f1):
